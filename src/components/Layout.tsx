@@ -119,6 +119,11 @@ export function Layout({ children, user }: LayoutProps) {
         <div className="flex flex-col flex-grow bg-white border-r border-gray-200">
           <div className="flex h-16 items-center px-4">
             <h1 className="text-xl font-semibold text-gray-900">Permit Manager</h1>
+            {import.meta.env.DEV && !import.meta.env.VITE_API_URL && (
+              <span className="ml-2 px-2 py-1 text-xs bg-warning-100 text-warning-800 rounded-full">
+                DEV MODE
+              </span>
+            )}
           </div>
           <nav className="flex-1 space-y-1 px-2 py-4">
             {navigation.map((item) => {

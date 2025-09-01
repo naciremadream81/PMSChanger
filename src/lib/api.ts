@@ -21,6 +21,9 @@ import {
 const API_BASE_URL = import.meta.env.VITE_API_URL || 
   (window.location.hostname === 'localhost' ? 'http://localhost:4000/api' : '/api');
 
+// Development mode flag
+const DEV_MODE = import.meta.env.DEV && !import.meta.env.VITE_API_URL;
+
 class ApiClient {
   private client: AxiosInstance;
 
@@ -49,29 +52,78 @@ class ApiClient {
     this.client.interceptors.response.use(
       (response) => response,
       (error) => {
+        // Handle network errors (no response)
+        if (!error.response) {
+          console.warn('Network error:', error.message);
+          return Promise.reject(new Error('Network error: Unable to connect to server'));
+        }
+        
+        // Handle HTTP errors
         if (error.response?.status === 401) {
           localStorage.removeItem('auth_token');
           localStorage.removeItem('user');
           window.location.href = '/login';
         }
+        
         return Promise.reject(error);
       }
     );
   }
 
+  // Development mode mock data
+  private getMockUser() {
+    return {
+      data: {
+        id: 'dev-user-1',
+        email: 'admin@example.com',
+        role: 'ADMIN' as const,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+    };
+  }
+
   // Authentication
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
+    if (DEV_MODE) {
+      // Mock login for development
+      const mockUser = this.getMockUser();
+      const mockToken = 'dev-token-' + Date.now();
+      localStorage.setItem('auth_token', mockToken);
+      localStorage.setItem('user', JSON.stringify(mockUser.data));
+      return {
+        user: mockUser.data,
+        token: mockToken
+      };
+    }
+    
     const response = await this.client.post<AuthResponse>('/auth/login', credentials);
     return response.data;
   }
 
   async logout(): Promise<void> {
+    if (DEV_MODE) {
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('user');
+      return;
+    }
+    
     await this.client.post('/auth/logout');
     localStorage.removeItem('auth_token');
     localStorage.removeItem('user');
   }
 
   async getCurrentUser(): Promise<ApiResponse<any>> {
+    if (DEV_MODE) {
+      // Check if we have a stored user in dev mode
+      const storedUser = localStorage.getItem('user');
+      if (storedUser) {
+        return { data: JSON.parse(storedUser) };
+      }
+      // Return mock user for development
+      return this.getMockUser();
+    }
+    
     const response = await this.client.get<ApiResponse<any>>('/auth/me');
     return response.data;
   }

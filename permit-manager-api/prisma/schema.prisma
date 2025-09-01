@@ -1,0 +1,305 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum PermitType {
+  RESIDENTIAL
+  MOBILE_HOME
+  MODULAR_HOME
+}
+
+enum PackageStatus {
+  DRAFT
+  IN_REVIEW
+  SUBMITTED
+  APPROVED
+  REJECTED
+  CLOSED
+}
+
+enum DocType {
+  PDF_TEMPLATE
+  FILLED_PDF
+  ATTACHMENT
+  PHOTO
+}
+
+enum FieldSource {
+  CUSTOMER
+  CONTRACTOR
+  PACKAGE
+  MOBILE_HOME
+  MANUAL
+}
+
+enum SubcontractorStatus {
+  PENDING
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(USER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  packages     PermitPackage[]
+  documents    Document[]
+  logs         StatusLog[]
+  signatures   Signature[]
+
+  @@map("users")
+}
+
+model Address {
+  id    String @id @default(uuid())
+  line1 String
+  line2 String?
+  city  String
+  state String @db.Char(2)
+  zip   String
+
+  // Relations
+  customers    Customer[]
+  contractors  Contractor[]
+  packages     PermitPackage[]
+  subcontractors Subcontractor[]
+
+  @@map("addresses")
+}
+
+model Customer {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String?
+  email     String?
+  addressId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  address   Address?        @relation(fields: [addressId], references: [id])
+  packages  PermitPackage[]
+
+  @@map("customers")
+}
+
+model Contractor {
+  id            String  @id @default(uuid())
+  companyName   String
+  contactName   String?
+  phone         String?
+  email         String?
+  licenseNumber String?
+  addressId     String?
+
+  // Relations
+  address   Address?        @relation(fields: [addressId], references: [id])
+  packages  PermitPackage[]
+
+  @@map("contractors")
+}
+
+model County {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+
+  // Relations
+  templates CountyChecklistTemplateItem[]
+  packages  PermitPackage[]
+
+  @@map("counties")
+}
+
+model CountyChecklistTemplateItem {
+  id         String     @id @default(uuid())
+  countyId   Int
+  label      String
+  category   String
+  permitType PermitType?
+  required   Boolean    @default(true)
+  sort       Int        @default(0)
+
+  // Relations
+  county     County     @relation(fields: [countyId], references: [id], onDelete: Cascade)
+
+  @@map("county_checklist_template_items")
+}
+
+model PermitPackage {
+  id                String        @id @default(uuid())
+  title             String
+  permitType        PermitType    @default(RESIDENTIAL)
+  status            PackageStatus @default(DRAFT)
+  dueDate           DateTime?
+  parcelNumber      String?
+  floodZone         String?
+  windExposure      String?
+  zoningApprovalRef String?
+  customerId        String
+  contractorId      String
+  countyId          Int
+  siteAddressId     String?
+  createdById       String
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  // Relations
+  customer          Customer      @relation(fields: [customerId], references: [id])
+  contractor        Contractor    @relation(fields: [contractorId], references: [id])
+  county            County        @relation(fields: [countyId], references: [id])
+  siteAddress       Address?      @relation(fields: [siteAddressId], references: [id])
+  createdBy         User          @relation(fields: [createdById], references: [id])
+  mobileHome        MobileHomeDetails?
+  subcontractors    Subcontractor[]
+  checklist         PackageChecklistItem[]
+  documents         Document[]
+  logs              StatusLog[]
+  signatures        Signature[]
+
+  @@index([status])
+  @@index([countyId])
+  @@index([permitType])
+  @@map("permit_packages")
+}
+
+model MobileHomeDetails {
+  id                String @id @default(uuid())
+  packageId         String @unique
+  makeModel         String?
+  year              Int?
+  widthFt           Int?
+  lengthFt          Int?
+  serialVIN         String?
+  hudLabel          String?
+  installerLicense  String?
+  foundationType    String?
+  tieDownSystem     String?
+  windZone          String?
+
+  // Relations
+  package           PermitPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@map("mobile_home_details")
+}
+
+model Subcontractor {
+  id              String              @id @default(uuid())
+  packageId       String
+  companyName     String
+  contactName     String?
+  phone           String?
+  email           String?
+  licenseNumber   String?
+  addressId       String?
+  tradeType       String
+  scopeOfWork     String?
+  contractAmount  Float?
+  startDate       DateTime?
+  completionDate  DateTime?
+  status          SubcontractorStatus @default(PENDING)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  // Relations
+  package         PermitPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  address         Address?      @relation(fields: [addressId], references: [id])
+
+  @@map("subcontractors")
+}
+
+model PackageChecklistItem {
+  id          String    @id @default(uuid())
+  packageId   String
+  label       String
+  category    String
+  required    Boolean   @default(true)
+  completed   Boolean   @default(false)
+  completedAt DateTime?
+
+  // Relations
+  package     PermitPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@map("package_checklist_items")
+}
+
+model Document {
+  id           String   @id @default(uuid())
+  packageId    String
+  type         DocType
+  tag          String?
+  objectKey    String
+  filename     String
+  mime         String
+  size         Int
+  uploadedById String
+  createdAt    DateTime @default(now())
+
+  // Relations
+  package      PermitPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  uploadedBy   User          @relation(fields: [uploadedById], references: [id])
+  fieldMap     PdfFieldMap[]
+
+  @@map("documents")
+}
+
+model PdfFieldMap {
+  id                 String      @id @default(uuid())
+  templateDocumentId String
+  fieldName          String
+  source             FieldSource
+  sourcePath         String?
+  transform          String?
+
+  // Relations
+  templateDocument   Document    @relation(fields: [templateDocumentId], references: [id], onDelete: Cascade)
+
+  @@map("pdf_field_maps")
+}
+
+model StatusLog {
+  id        String   @id @default(uuid())
+  packageId String
+  status    String
+  note      String?
+  createdById String
+  createdAt DateTime @default(now())
+
+  // Relations
+  package   PermitPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  createdBy User          @relation(fields: [createdById], references: [id])
+
+  @@map("status_logs")
+}
+
+model Signature {
+  id              String   @id @default(uuid())
+  packageId       String
+  signedById      String
+  imageObjectKey  String
+  createdAt       DateTime @default(now())
+
+  // Relations
+  package         PermitPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  signedBy        User          @relation(fields: [signedById], references: [id])
+
+  @@map("signatures")
+}
